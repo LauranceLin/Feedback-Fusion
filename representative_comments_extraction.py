@@ -12,9 +12,9 @@ from joblib import Parallel, delayed
 from collections import Counter
 
 # 超參數
-n_clusters = 5  # 固定分群數
+n_clusters = 7  # 固定分群數
 n_representative_comments = 3  # 每個群組提取的代表性評論數量
-pmi_threshold = 2  # PMI 閾值
+mi_threshold = 0.5  # MI 閾值
 min_freq = 3  # 最小詞頻
 
 # 載入資料
@@ -37,12 +37,12 @@ def contains_chinese(text):
 
 documents = documents[documents.apply(contains_chinese)]
 
-# 清理詞內停用字
+# 自定義函數：清理詞內停用字
 def clean_word(word, stop_words):
     return ''.join(char for char in word if char not in stop_words)
 
 # 自定義詞典生成
-def generate_custom_dict(comments, pmi_threshold, min_freq): 
+def generate_custom_dict(comments, mi_threshold, min_freq): 
     segmented_words = [
         word for comment in comments for word in jieba.lcut(comment) if len(word) > 1
     ]
@@ -52,6 +52,8 @@ def generate_custom_dict(comments, pmi_threshold, min_freq):
     word_freq = Counter(filtered_words)
 
     pair_freq = Counter()
+    trigram_freq = Counter()
+    fourgram_freq = Counter()
     for comment in comments:
         tokens = [
             clean_word(word, chinese_stopwords) for word in jieba.lcut(comment) if clean_word(word, chinese_stopwords) not in chinese_stopwords
@@ -59,29 +61,50 @@ def generate_custom_dict(comments, pmi_threshold, min_freq):
         for i in range(len(tokens) - 1):
             pair = (tokens[i], tokens[i + 1])
             pair_freq[pair] += 1
+        for i in range(len(tokens) - 2):
+            trigram = (tokens[i], tokens[i + 1], tokens[i + 2])
+            trigram_freq[trigram] += 1
+        for i in range(len(tokens) - 3):
+            fourgram = (tokens[i], tokens[i + 1], tokens[i + 2], tokens[i + 3])
+            fourgram_freq[fourgram] += 1
 
     total_words = sum(word_freq.values())
     total_pairs = sum(pair_freq.values())
+    total_trigrams = sum(trigram_freq.values())
+    total_fourgrams = sum(fourgram_freq.values())
 
-    def calculate_pmi(pair, freq_dict, total_count):
-        prob_pair = freq_dict[pair] / total_count if freq_dict[pair] > 0 else 1e-10
-        prob_w1 = word_freq[pair[0]] / total_words if word_freq[pair[0]] > 0 else 1e-10
-        prob_w2 = word_freq[pair[1]] / total_words if word_freq[pair[1]] > 0 else 1e-10
-        return prob_pair / (prob_w1 * prob_w2)
+    def calculate_mi(group, freq_dict, total_count):
+        joint_prob = freq_dict[group] / total_count if freq_dict[group] > 0 else 1e-10
+        individual_probs = [word_freq[w] / total_words if word_freq[w] > 0 else 1e-10 for w in group]
+        marginal_prob = sum(individual_probs) / len(individual_probs)
+        return joint_prob / marginal_prob
 
-    custom_terms = [
+    custom_bigrams = [
         "".join(pair) for pair in pair_freq
-        if calculate_pmi(pair, pair_freq, total_pairs) > pmi_threshold and pair_freq[pair] >= min_freq
+        if calculate_mi(pair, pair_freq, total_pairs) > mi_threshold and pair_freq[pair] >= min_freq
+        and contains_chinese("".join(pair))
     ]
+    custom_trigrams = [
+        "".join(trigram) for trigram in trigram_freq
+        if calculate_mi(trigram, trigram_freq, total_trigrams) > mi_threshold and trigram_freq[trigram] >= min_freq
+        and contains_chinese("".join(trigram))
+    ]
+    custom_fourgrams = [
+        "".join(fourgram) for fourgram in fourgram_freq
+        if calculate_mi(fourgram, fourgram_freq, total_fourgrams) > mi_threshold and fourgram_freq[fourgram] >= min_freq
+        and contains_chinese("".join(fourgram))
+    ]
+
+    all_terms = custom_bigrams + custom_trigrams + custom_fourgrams
 
     dict_file = "custom_dict.txt"
     with open(dict_file, "w", encoding="utf-8") as f:
-        for term in custom_terms:
+        for term in all_terms:
             f.write(f"{term} 10\n")
-    print(f"自定義詞典已生成，包含 {len(custom_terms)} 個詞彙")
+    print(f"自定義詞典已生成，包含 {len(all_terms)} 個詞彙")
     return dict_file
 
-custom_dict = generate_custom_dict(documents, pmi_threshold, min_freq)
+custom_dict = generate_custom_dict(documents, mi_threshold, min_freq)
 jieba.load_userdict(custom_dict)
 
 # 文本處理
