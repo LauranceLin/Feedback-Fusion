@@ -17,7 +17,7 @@ mi_threshold = 0.3  # MI 閾值
 min_freq = 3  # 最小詞頻
 
 # 載入資料
-file_path = 'dataset_2.xlsx'
+file_path = 'dataset_3.xlsx'
 df = pd.read_excel(file_path, sheet_name='Sheet1')
 df = df[df['stars'] < 3]
 documents = df['text'].dropna()
@@ -135,12 +135,16 @@ cluster_comments = {cluster_id: [] for cluster_id in range(n_clusters)}
 for idx, cluster_id in enumerate(clusters):
     cluster_comments[cluster_id].append(documents.iloc[idx])
 
+for id in range(len(cluster_comments)):
+    print(str(id) + ': ' + str(len(cluster_comments[id])))
+
 # 對每個 cluster 處理
 top_keywords_by_cluster = {}
 
 for cluster_id, comments in cluster_comments.items():
     # 為每個 cluster 生成自定義詞典
     custom_dict_path = generate_custom_dict(comments, mi_threshold, min_freq)
+    jieba.initialize()
     jieba.load_userdict(custom_dict_path)
 
     # 將原始評論進行 tokenize
