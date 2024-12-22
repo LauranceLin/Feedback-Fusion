@@ -11,11 +11,11 @@ import matplotlib.pyplot as plt
 
 # 超參數
 n_gram = 10  # 最大連結數
-mi_threshold = 0.5  # MI 閾值
+mi_threshold = 0.3  # MI 閾值
 min_freq = 3  # 最小詞頻
 
 # 載入資料
-file_path = 'dataset_3.xlsx'
+file_path = 'dataset_5.xlsx'
 df = pd.read_excel(file_path, sheet_name='Sheet1')
 df = df[df['stars'] < 3]
 documents = df['text'].dropna()
@@ -38,6 +38,7 @@ documents = documents[documents.apply(contains_chinese)]
 def clean_word(word, stop_words):
     return ''.join(char for char in word if char not in stop_words and char not in ['\n', '\r', '\t', ' '])
 
+# 自定義詞典生成
 def generate_custom_dict(comments, mi_threshold, min_freq, n_gram): 
     segmented_words = [
         word for comment in comments for word in jieba.lcut(comment) if len(word) > 1
@@ -94,8 +95,8 @@ jieba.load_userdict(custom_dict)
 def tokenize_and_remove_stopwords(text):
     words = jieba.cut(text)
     return [
-        word for word in words
-        if word not in chinese_stopwords and len(word) > 1
+        clean_word(word, chinese_stopwords) for word in words
+        if clean_word(word, chinese_stopwords) not in chinese_stopwords and len(clean_word(word, chinese_stopwords)) > 1
     ]
 
 tokenized_documents = Parallel(n_jobs=-1)(
@@ -110,38 +111,39 @@ tfidf_transformer = TfidfTransformer()
 word_count_matrix = vectorizer.fit_transform(joined_documents)
 tfidf_matrix = tfidf_transformer.fit_transform(word_count_matrix)
 
-def determine_optimal_k(tfidf_matrix, max_k=15):
-    distortions = []
-    K = range(2, max_k + 1)  # 測試的 k 範圍
+# def determine_optimal_k(tfidf_matrix, max_k=15):
+#     distortions = []
+#     K = range(2, max_k + 1)  # 測試的 k 範圍
 
-    for k in K:
-        kmeans = KMeans(n_clusters=k, random_state=42)
-        kmeans.fit(tfidf_matrix)
-        distortions.append(kmeans.inertia_)  # SSE (Sum of Squared Errors)
+#     for k in K:
+#         kmeans = KMeans(n_clusters=k, random_state=42)
+#         kmeans.fit(tfidf_matrix)
+#         distortions.append(kmeans.inertia_)  # SSE (Sum of Squared Errors)
 
-    # 找到肘部點
-    kneedle = KneeLocator(K, distortions, curve="convex", direction="decreasing")
-    optimal_k = kneedle.knee
+#     # 找到肘部點
+#     kneedle = KneeLocator(K, distortions, curve="convex", direction="decreasing")
+#     optimal_k = kneedle.knee
 
-    if optimal_k is None:
-        print("Warning: Unable to find a clear elbow point. Using default k = 8.")
-        optimal_k = 8  # 默認值，可根據需要設置
+#     if optimal_k is None:
+#         print("Warning: Unable to find a clear elbow point. Using default k = 8.")
+#         optimal_k = 8  # 默認值，可根據需要設置
 
-    # 視覺化肘部法
-    plt.figure(figsize=(8, 6))
-    plt.plot(K, distortions, marker='o', label="SSE")
-    if optimal_k is not None:
-        plt.axvline(optimal_k, linestyle="--", color="r", label=f"Optimal k = {optimal_k}")
-    plt.xlabel("Number of Clusters (k)")
-    plt.ylabel("SSE")
-    plt.title("Elbow Method for Optimal k")
-    plt.legend()
-    plt.show()
+#     # 視覺化肘部法
+#     plt.figure(figsize=(8, 6))
+#     plt.plot(K, distortions, marker='o', label="SSE")
+#     if optimal_k is not None:
+#         plt.axvline(optimal_k, linestyle="--", color="r", label=f"Optimal k = {optimal_k}")
+#     plt.xlabel("Number of Clusters (k)")
+#     plt.ylabel("SSE")
+#     plt.title("Elbow Method for Optimal k")
+#     plt.legend()
+#     plt.show()
 
-    return optimal_k
+#     return optimal_k
 
-# 計算最佳的 k 值
-optimal_k = determine_optimal_k(tfidf_matrix)
+# # 計算最佳的 k 值
+# optimal_k = determine_optimal_k(tfidf_matrix)
+optimal_k = 8
 
 # 分群
 kmeans = KMeans(n_clusters=optimal_k, random_state=42)
@@ -172,9 +174,9 @@ for cluster_id, comments in cluster_comments.items():
     words = vectorizer.get_feature_names_out()
     tfidf_scores = np.asarray(tfidf_matrix.sum(axis=0)).flatten()
     sorted_indices = np.argsort(tfidf_scores)[::-1]
-    top_keywords = [words[idx] for idx in sorted_indices[:3]]
+    top_keywords = [words[idx] for idx in sorted_indices[:5]]
     top_keywords_by_cluster[cluster_id] = top_keywords
 
 # 輸出每個 cluster 的 Top 3 關鍵字
 for cluster_id, keywords in top_keywords_by_cluster.items():
-    print(f"Cluster {cluster_id} Top 3 Keywords: {', '.join(keywords)}")
+    print(f"Cluster {cluster_id} Top 5 Keywords: {', '.join(keywords)}")
