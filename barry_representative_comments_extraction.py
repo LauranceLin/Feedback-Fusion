@@ -23,7 +23,17 @@ num_of_top_keywords = 10
 # 載入資料
 file_path = 'C:\\Users\\barry\\My_Document\\資訊檢索與文字探勘\\hotpot_reviews_dataset.xlsx'
 df = pd.read_excel(file_path, sheet_name='Sheet1')
-df = df[df['stars'] <= 2]
+
+while(True):
+    NorP = input('n or p: ')
+    if(NorP == 'P' or NorP == 'p'):
+        df = df[df['stars'] > 3]
+        break
+    elif(NorP == 'N' or NorP == 'n'):
+        df = df[df['stars'] < 3]
+        break
+        
+
 documents = df['text'].dropna()
 
 # 停用詞載入
@@ -84,14 +94,14 @@ def generate_custom_dict(comments, mi_threshold, min_freq, n_gram=10):
         ]
 
     # 印出所有的自定義詞
-    print("自定義詞列表:", end=' ')
-    print(custom_ngrams)
+    # print("自定義詞列表:", end=' ')
+    # print(custom_ngrams)
 
     dict_file = "custom_dict.txt"
     with open(dict_file, "w", encoding="utf-8") as f:
         for term in custom_ngrams:
             f.write(f"{term} 10\n")
-    print(f"自定義詞典已生成，包含 {len(custom_ngrams)} 個詞彙")
+    # print(f"自定義詞典已生成，包含 {len(custom_ngrams)} 個詞彙")
     return dict_file
 
 custom_dict = generate_custom_dict(documents, mi_threshold, min_freq)
@@ -100,9 +110,9 @@ jieba.load_userdict(custom_dict)
 # 文本處理
 def tokenize_and_remove_stopwords(text):
     words = jieba.cut(text)
-    return [
+    return [ 
         word for word in words
-        if word not in chinese_stopwords and len(word) > 1
+        if word not in chinese_stopwords and len(word) > 1 and not word.isdigit()
     ]
 
 tokenized_documents = Parallel(n_jobs=-1)(
