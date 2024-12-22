@@ -12,13 +12,12 @@ from joblib import Parallel, delayed
 from collections import Counter
 
 # 超參數
-n_clusters = 7  # 固定分群數
-n_representative_comments = 3  # 每個群組提取的代表性評論數量
+n_clusters = 10  # 固定分群數
 mi_threshold = 0.3  # MI 閾值
 min_freq = 3  # 最小詞頻
 
 # 載入資料
-file_path = 'dataset_3.xlsx'
+file_path = 'dataset_2.xlsx'
 df = pd.read_excel(file_path, sheet_name='Sheet1')
 df = df[df['stars'] < 3]
 documents = df['text'].dropna()
@@ -37,7 +36,7 @@ def contains_chinese(text):
 
 documents = documents[documents.apply(contains_chinese)]
 
-# 自定義函數：清理詞內停用字
+# 清理詞內停用字
 def clean_word(word, stop_words):
     return ''.join(char for char in word if char not in stop_words)
 
@@ -131,46 +130,33 @@ tfidf_matrix = tfidf_transformer.fit_transform(word_count_matrix)
 kmeans = KMeans(n_clusters=n_clusters, random_state=42)
 clusters = kmeans.fit_predict(tfidf_matrix)
 
-# 提取群組代表性評論
-def extract_representative_comments(tfidf_matrix, labels, original_documents, n_representative):
-    representative_comments = {}
-    for cluster_id in set(labels):
-        cluster_indices = [i for i, label in enumerate(labels) if label == cluster_id]
-        cluster_vectors = tfidf_matrix[cluster_indices]
-        cluster_center = np.mean(cluster_vectors.toarray(), axis=0)
-        similarities = cosine_similarity([cluster_center], cluster_vectors).flatten()
-        top_indices = np.argsort(similarities)[::-1][:n_representative]
-        representative_comments[cluster_id] = original_documents.iloc[
-            [cluster_indices[idx] for idx in top_indices]
-        ].tolist()
-    return representative_comments
+# 提取每個 cluster 的評論
+cluster_comments = {cluster_id: [] for cluster_id in range(n_clusters)}
+for idx, cluster_id in enumerate(clusters):
+    cluster_comments[cluster_id].append(documents.iloc[idx])
 
-representative_comments = extract_representative_comments(tfidf_matrix, clusters, documents, n_representative_comments)
+# 對每個 cluster 處理
+top_keywords_by_cluster = {}
 
-# 視覺化
-def visualize_clusters(tfidf_matrix, clusters):
-    tsne = TSNE(n_components=2, random_state=42, perplexity=30)
-    reduced_vectors = tsne.fit_transform(tfidf_matrix.toarray())
-    plt.figure(figsize=(10, 8))
-    sns.scatterplot(
-        x=reduced_vectors[:, 0], 
-        y=reduced_vectors[:, 1],
-        hue=clusters,
-        palette="tab10",
-        legend="full"
-    )
-    plt.title("Cluster Visualization with t-SNE")
-    plt.show()
+for cluster_id, comments in cluster_comments.items():
+    # 為每個 cluster 生成自定義詞典
+    custom_dict_path = generate_custom_dict(comments, mi_threshold, min_freq)
+    jieba.load_userdict(custom_dict_path)
 
-visualize_clusters(tfidf_matrix, clusters)
+    # 將原始評論進行 tokenize
+    tokenized_comments = [" ".join(tokenize_and_remove_stopwords(c)) for c in comments]
 
-# 儲存結果
-output_data = {
-    cluster_id: comments for cluster_id, comments in representative_comments.items()
-}
-representative_df = pd.DataFrame.from_dict(output_data, orient='index')
-representative_df.columns = [f"Comment {i+1}" for i in range(n_representative_comments)]
-output_file = 'representative_comments.xlsx'
-representative_df.to_excel(output_file, index=True)
+    # 提取 Top 3 關鍵字
+    vectorizer = CountVectorizer()
+    word_count_matrix = vectorizer.fit_transform(tokenized_comments)
+    tfidf_transformer = TfidfTransformer()
+    tfidf_matrix = tfidf_transformer.fit_transform(word_count_matrix)
+    words = vectorizer.get_feature_names_out()
+    tfidf_scores = np.asarray(tfidf_matrix.sum(axis=0)).flatten()
+    sorted_indices = np.argsort(tfidf_scores)[::-1]
+    top_keywords = [words[idx] for idx in sorted_indices[:3]]
+    top_keywords_by_cluster[cluster_id] = top_keywords
 
-print(f"代表性評論已儲存到 {output_file}")
+# 輸出每個 cluster 的 Top 3 關鍵字
+for cluster_id, keywords in top_keywords_by_cluster.items():
+    print(f"Cluster {cluster_id} Top 3 Keywords: {', '.join(keywords)}")
