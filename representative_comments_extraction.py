@@ -4,16 +4,14 @@ import numpy as np
 import re
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.cluster import KMeans
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.manifold import TSNE
-import matplotlib.pyplot as plt
-import seaborn as sns
 from joblib import Parallel, delayed
 from collections import Counter
+from kneed import KneeLocator 
+import matplotlib.pyplot as plt
 
 # 超參數
-n_clusters = 10  # 固定分群數
-mi_threshold = 0.3  # MI 閾值
+n_gram = 10  # 最大連結數
+mi_threshold = 0.5  # MI 閾值
 min_freq = 3  # 最小詞頻
 
 # 載入資料
@@ -36,12 +34,11 @@ def contains_chinese(text):
 
 documents = documents[documents.apply(contains_chinese)]
 
-# 清理詞內停用字
+# 清理詞內停用字並移除換行符
 def clean_word(word, stop_words):
-    return ''.join(char for char in word if char not in stop_words)
+    return ''.join(char for char in word if char not in stop_words and char not in ['\n', '\r', '\t', ' '])
 
-# 自定義詞典生成
-def generate_custom_dict(comments, mi_threshold, min_freq): 
+def generate_custom_dict(comments, mi_threshold, min_freq, n_gram): 
     segmented_words = [
         word for comment in comments for word in jieba.lcut(comment) if len(word) > 1
     ]
@@ -50,27 +47,19 @@ def generate_custom_dict(comments, mi_threshold, min_freq):
     ]
     word_freq = Counter(filtered_words)
 
-    pair_freq = Counter()
-    trigram_freq = Counter()
-    fourgram_freq = Counter()
+    ngram_freq = {n: Counter() for n in range(2, n_gram + 1)}  # 初始化 2-gram 到 n-gram 的頻率統計
+
     for comment in comments:
         tokens = [
             clean_word(word, chinese_stopwords) for word in jieba.lcut(comment) if clean_word(word, chinese_stopwords) not in chinese_stopwords
         ]
-        for i in range(len(tokens) - 1):
-            pair = (tokens[i], tokens[i + 1])
-            pair_freq[pair] += 1
-        for i in range(len(tokens) - 2):
-            trigram = (tokens[i], tokens[i + 1], tokens[i + 2])
-            trigram_freq[trigram] += 1
-        for i in range(len(tokens) - 3):
-            fourgram = (tokens[i], tokens[i + 1], tokens[i + 2], tokens[i + 3])
-            fourgram_freq[fourgram] += 1
+        for n in range(2, n_gram + 1):  # 遍歷 2 到 n-gram
+            for i in range(len(tokens) - n + 1):
+                ngram = tuple(tokens[i:i + n])
+                ngram_freq[n][ngram] += 1
 
     total_words = sum(word_freq.values())
-    total_pairs = sum(pair_freq.values())
-    total_trigrams = sum(trigram_freq.values())
-    total_fourgrams = sum(fourgram_freq.values())
+    total_ngram_counts = {n: sum(ngram_freq[n].values()) for n in range(2, n_gram + 1)}
 
     def calculate_mi(group, freq_dict, total_count):
         joint_prob = freq_dict[group] / total_count if freq_dict[group] > 0 else 1e-10
@@ -78,32 +67,27 @@ def generate_custom_dict(comments, mi_threshold, min_freq):
         marginal_prob = sum(individual_probs) / len(individual_probs)
         return joint_prob / marginal_prob
 
-    custom_bigrams = [
-        "".join(pair) for pair in pair_freq
-        if calculate_mi(pair, pair_freq, total_pairs) > mi_threshold and pair_freq[pair] >= min_freq
-        and contains_chinese("".join(pair))
-    ]
-    custom_trigrams = [
-        "".join(trigram) for trigram in trigram_freq
-        if calculate_mi(trigram, trigram_freq, total_trigrams) > mi_threshold and trigram_freq[trigram] >= min_freq
-        and contains_chinese("".join(trigram))
-    ]
-    custom_fourgrams = [
-        "".join(fourgram) for fourgram in fourgram_freq
-        if calculate_mi(fourgram, fourgram_freq, total_fourgrams) > mi_threshold and fourgram_freq[fourgram] >= min_freq
-        and contains_chinese("".join(fourgram))
-    ]
+    custom_ngrams = []
+    for n in range(2, n_gram + 1):  # 遍歷每個 n-gram
+        custom_ngrams += [
+            "".join(ngram) for ngram in ngram_freq[n]
+            if calculate_mi(ngram, ngram_freq[n], total_ngram_counts[n]) > mi_threshold
+            and ngram_freq[n][ngram] >= min_freq
+            and contains_chinese("".join(ngram))
+        ]
 
-    all_terms = custom_bigrams + custom_trigrams + custom_fourgrams
+    # 印出所有的自定義詞
+    print("自定義詞列表:", end=' ')
+    print(custom_ngrams)
 
     dict_file = "custom_dict.txt"
     with open(dict_file, "w", encoding="utf-8") as f:
-        for term in all_terms:
+        for term in custom_ngrams:
             f.write(f"{term} 10\n")
-    print(f"自定義詞典已生成，包含 {len(all_terms)} 個詞彙")
+    print(f"自定義詞典已生成，包含 {len(custom_ngrams)} 個詞彙")
     return dict_file
 
-custom_dict = generate_custom_dict(documents, mi_threshold, min_freq)
+custom_dict = generate_custom_dict(documents, mi_threshold, min_freq, n_gram)
 jieba.load_userdict(custom_dict)
 
 # 文本處理
@@ -126,24 +110,54 @@ tfidf_transformer = TfidfTransformer()
 word_count_matrix = vectorizer.fit_transform(joined_documents)
 tfidf_matrix = tfidf_transformer.fit_transform(word_count_matrix)
 
+def determine_optimal_k(tfidf_matrix, max_k=15):
+    distortions = []
+    K = range(2, max_k + 1)  # 測試的 k 範圍
+
+    for k in K:
+        kmeans = KMeans(n_clusters=k, random_state=42)
+        kmeans.fit(tfidf_matrix)
+        distortions.append(kmeans.inertia_)  # SSE (Sum of Squared Errors)
+
+    # 找到肘部點
+    kneedle = KneeLocator(K, distortions, curve="convex", direction="decreasing")
+    optimal_k = kneedle.knee
+
+    if optimal_k is None:
+        print("Warning: Unable to find a clear elbow point. Using default k = 8.")
+        optimal_k = 8  # 默認值，可根據需要設置
+
+    # 視覺化肘部法
+    plt.figure(figsize=(8, 6))
+    plt.plot(K, distortions, marker='o', label="SSE")
+    if optimal_k is not None:
+        plt.axvline(optimal_k, linestyle="--", color="r", label=f"Optimal k = {optimal_k}")
+    plt.xlabel("Number of Clusters (k)")
+    plt.ylabel("SSE")
+    plt.title("Elbow Method for Optimal k")
+    plt.legend()
+    plt.show()
+
+    return optimal_k
+
+# 計算最佳的 k 值
+optimal_k = determine_optimal_k(tfidf_matrix)
+
 # 分群
-kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+kmeans = KMeans(n_clusters=optimal_k, random_state=42)
 clusters = kmeans.fit_predict(tfidf_matrix)
 
 # 提取每個 cluster 的評論
-cluster_comments = {cluster_id: [] for cluster_id in range(n_clusters)}
+cluster_comments = {cluster_id: [] for cluster_id in range(optimal_k)}
 for idx, cluster_id in enumerate(clusters):
     cluster_comments[cluster_id].append(documents.iloc[idx])
-
-for id in range(len(cluster_comments)):
-    print(str(id) + ': ' + str(len(cluster_comments[id])))
 
 # 對每個 cluster 處理
 top_keywords_by_cluster = {}
 
 for cluster_id, comments in cluster_comments.items():
     # 為每個 cluster 生成自定義詞典
-    custom_dict_path = generate_custom_dict(comments, mi_threshold, min_freq)
+    custom_dict_path = generate_custom_dict(comments, mi_threshold, min_freq, n_gram)
     jieba.initialize()
     jieba.load_userdict(custom_dict_path)
 
