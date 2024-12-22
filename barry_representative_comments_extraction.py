@@ -16,7 +16,7 @@ from kneed import KneeLocator
 mi_threshold = 0.3  # MI 閾值
 min_freq = 3  # 最小詞頻
 n_gram = 10
-max_rand_seed = 1000
+max_rand_seed = 100
 max_K = 10
 num_of_top_keywords = 10
 
