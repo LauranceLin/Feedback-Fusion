@@ -14,7 +14,7 @@ from collections import Counter
 # 超參數
 n_clusters = 7  # 固定分群數
 n_representative_comments = 3  # 每個群組提取的代表性評論數量
-mi_threshold = 0.5  # MI 閾值
+mi_threshold = 0.3  # MI 閾值
 min_freq = 3  # 最小詞頻
 
 # 載入資料
