@@ -13,12 +13,12 @@ from collections import Counter
 from kneed import KneeLocator
 
 # 超參數
-mi_threshold = 0.3  # MI 閾值
+mi_threshold = 1  # MI 閾值
 min_freq = 3  # 最小詞頻
 n_gram = 10
 max_rand_seed = 100
 max_K = 10
-num_of_top_keywords = 10
+num_of_top_keywords = 5
 
 # 載入資料
 file_path = 'C:\\Users\\barry\\My_Document\\資訊檢索與文字探勘\\hotpot_reviews_dataset.xlsx'
@@ -68,7 +68,7 @@ def generate_custom_dict(comments, mi_threshold, min_freq, n_gram=10):
 
     for comment in comments:
         tokens = [
-            clean_word(word, chinese_stopwords) for word in jieba.lcut(comment) if clean_word(word, chinese_stopwords) not in chinese_stopwords
+            clean_word(word, chinese_stopwords) for word in jieba.lcut(comment) if clean_word(word, chinese_stopwords) not in chinese_stopwords and len(clean_word(word, chinese_stopwords)) > 1
         ]
         for n in range(2, n_gram + 1):  # 遍歷 2 到 n-gram
             for i in range(len(tokens) - n + 1):
@@ -94,8 +94,8 @@ def generate_custom_dict(comments, mi_threshold, min_freq, n_gram=10):
         ]
 
     # 印出所有的自定義詞
-    # print("自定義詞列表:", end=' ')
-    # print(custom_ngrams)
+    print("自定義詞列表:", end=' ')
+    print(custom_ngrams)
 
     dict_file = "custom_dict.txt"
     with open(dict_file, "w", encoding="utf-8") as f:
@@ -220,8 +220,9 @@ for cluster_id, comments in cluster_comments.items():
     #     if idx < 3:
     #         break
 
+print()
 
-# 輸出每個 cluster 的 Top 3 關鍵字
+# 輸出每個 cluster 的 Top N 關鍵字
 for cluster_id, keywords in top_keywords_by_cluster.items():
     print(f"Cluster {cluster_id} Top {num_of_top_keywords} Keywords: {', '.join(keywords)}")
 
