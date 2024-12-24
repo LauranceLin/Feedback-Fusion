@@ -33,8 +33,20 @@ while(True):
         df = df[df['stars'] < 3]
         break
         
+def split_sentences(comment):
+    """將評論分割為多句話，包括換行符號作為句號"""
+    import re
+    # 使用正則表達式分割句子，包含標點符號和換行符號
+    sentences = re.split(r'(?<=[。！？!?.])', comment)
+    # 移除空白和多餘的換行符號
+    # return [sentence.strip() for sentence in sentences if sentence.strip()]
+    # 移除標點符號
+    sentences = [re.sub(r'[。！？!?.\n]', '', sentence).strip() for sentence in sentences]
+    # 移除空白和多餘的換行符號
+    return [sentence for sentence in sentences if sentence]
 
 documents = df['text'].dropna()
+
 
 # 停用詞載入
 stopwords_path = 'C:\\Users\\barry\\My_Document\\資訊檢索與文字探勘\\term_project\\stop_word_list.txt'
@@ -49,6 +61,18 @@ def contains_chinese(text):
     return chinese_count > total_count / 2
 
 documents = documents[documents.apply(contains_chinese)]
+# print(type(documents))
+# documents = documents.apply(
+#     lambda comment: [sentence for sentence in split_sentences(comment)]
+# )
+# documents =  documents[documents.apply(split_sentences)]
+tokenized_sentences = documents.apply(
+    lambda comment: [sentence for sentence in split_sentences(comment)]
+)
+
+# 如果需要展平 (每句話一列)
+documents = tokenized_sentences.explode().dropna().reset_index(drop=True)
+documents = documents[documents.str.strip() != ''].drop_duplicates().reset_index(drop=True)
 
 # 清理詞內停用字
 def clean_word(word, stop_words):
