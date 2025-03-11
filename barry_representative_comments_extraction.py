@@ -20,8 +20,10 @@ max_rand_seed = 100
 max_K = 10
 num_of_top_keywords = 5
 
+file_path = '.\\hotpot_reviews_dataset.xlsx'
+stopwords_path = '.\\stop_word_list.txt'
+
 # 載入資料
-file_path = 'C:\\Users\\barry\\My_Document\\資訊檢索與文字探勘\\hotpot_reviews_dataset.xlsx'
 df = pd.read_excel(file_path, sheet_name='Sheet1')
 
 while(True):
@@ -49,7 +51,6 @@ documents = df['text'].dropna()
 
 
 # 停用詞載入
-stopwords_path = 'C:\\Users\\barry\\My_Document\\資訊檢索與文字探勘\\term_project\\stop_word_list.txt'
 with open(stopwords_path, "r", encoding="utf-8") as f:
     chinese_stopwords = set(f.read().splitlines())
 
