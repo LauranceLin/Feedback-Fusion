@@ -5,7 +5,12 @@
 
 ## 執行流程
 1. 從 [Apify](https://apify.com/compass/google-maps-reviews-scraper) 下載所需的評論。
-2. 
+2. 將下載的評論整理成只有 'star' 和 'text' 的欄位。(optional)
+3. 修改程式碼裡面的 stopwords_path 和 file_path。
+4. 在 command line 執行該檔案。
+5. 程式會需要使用者輸入要了解該商將的優勢(p)還是劣勢(n)。
+6. 等待顯示結果。
+
 ## 結果演示
 以公館新馬辣火鍋店的 Google 評論為例。\
 自定義字典範例：\
